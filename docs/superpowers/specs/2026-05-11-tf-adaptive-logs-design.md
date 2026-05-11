@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-11
 **Author:** Timo Gerhard
-**Status:** Approved
+**Status:** Draft (pending user review)
 
 ## Goal
 
