@@ -20,12 +20,12 @@ provider "restapi" {
   }
 }
 
-# module "billing_segment" {
-#   source = "../../modules/segment"
-#
-#   name     = "Billing API"
-#   selector = "{service_name=\"billing-api\"}"
-# }
+module "billing_segment" {
+  source = "../../modules/segment"
+
+  name     = "Billing API"
+  selector = "{service_name=\"billing-api\"}"
+}
 
 module "drop_debug_api_gateway" {
   source = "../../modules/drop-rule"
@@ -36,10 +36,11 @@ module "drop_debug_api_gateway" {
   levels          = ["debug"]
 }
 
-# module "exempt_api_gateway_prod" {
-#   source = "../../modules/exemption"
+# Disabled until we know the POST response shape so restapi can extract the ID.
+# Re-enable after setting id_attribute correctly on modules/exemption/main.tf.
+module "exempt_api_gateway_prod" {
+  source = "../../modules/exemption"
 
-#   stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
-#   reason          = "Investigating latency spike — keep full fidelity"
-#   expires_at      = "2026-06-01T00:00:00Z"
-# }
+  stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
+  reason          = "Investigating latency spike — keep full fidelity"
+}

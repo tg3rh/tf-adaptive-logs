@@ -15,6 +15,15 @@ terraform {
 resource "restapi_object" "this" {
   path = "/adaptive-logs/drop-rules"
 
+  # Server enriches the response with these fields; ignore them to avoid a
+  # cosmetic perma-diff on every plan.
+  ignore_changes_to = [
+    "id",
+    "tenant_id",
+    "created_at",
+    "updated_at",
+  ]
+
   data = jsonencode(merge(
     {
       segment_id = var.segment_id

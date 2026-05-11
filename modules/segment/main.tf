@@ -17,6 +17,16 @@ resource "restapi_object" "this" {
   update_path  = "/adaptive-logs/segment?segment={id}"
   destroy_path = "/adaptive-logs/segment?segment={id}"
 
+  # Server enriches the response with these fields; without ignoring them every
+  # plan shows a no-op diff.
+  ignore_changes_to = [
+    "id",
+    "created_at",
+    "updated_at",
+    "is_early",
+    "fallback_to_default",
+  ]
+
   data = jsonencode({
     name     = var.name
     selector = var.selector
