@@ -22,7 +22,7 @@ There is no official Terraform provider for Adaptive Logs, so the modules wrap t
 | Requirement | Notes |
 | --- | --- |
 | Terraform | `>= 1.5` |
-| Provider | `Mastercard/restapi ~> 2.0` |
+| Provider | `Mastercard/restapi ~> 3.0` |
 | Grafana Cloud | A stack with Loki and Adaptive Logs enabled |
 | Loki URL | e.g. `https://logs-prod-012.grafana.net` — found under **Connections → Loki → Details** in Grafana Cloud |
 | Tenant ID | Numeric instance ID from the same Loki details page |
