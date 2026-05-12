@@ -20,25 +20,37 @@ provider "restapi" {
   }
 }
 
-module "billing_segment" {
-  source = "../../modules/segment"
+module "adaptive_logs" {
+  source = "../.."
 
-  name     = "Billing API"
-  selector = "{service_name=\"billing-api\"}"
-}
+  segments = {
+    billing = {
+      name     = "Billing API"
+      selector = "{service_name=\"billing-api\"}"
+    }
+  }
 
-module "drop_debug_api_gateway" {
-  source = "../../modules/drop-rule"
+  drop_rules = {
+    debug-api-gateway = {
+      name            = "Drop debug logs on api-gateway"
+      stream_selector = "{service_name=\"api-gateway\"}"
+      drop_rate       = 100
+      levels          = ["debug"]
+    }
 
-  name            = "Drop debug logs on api-gateway"
-  stream_selector = "{service_name=\"api-gateway\"}"
-  drop_rate       = 100
-  levels          = ["debug"]
-}
+    debug-billing = {
+      segment         = "billing"
+      name            = "Drop debug logs on billing-api"
+      stream_selector = "{service_name=\"billing-api\"}"
+      drop_rate       = 100
+      levels          = ["debug"]
+    }
+  }
 
-module "exempt_api_gateway_prod" {
-  source = "../../modules/exemption"
-
-  stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
-  reason          = "Investigating latency spike — keep full fidelity"
+  exemptions = {
+    api-gateway-prod = {
+      stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
+      reason          = "Investigating latency spike - keep full fidelity"
+    }
+  }
 }

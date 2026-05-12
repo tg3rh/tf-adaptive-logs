@@ -1,55 +1,37 @@
-variable "segment_id" {
-  description = "Target segment ID. Use \"__global__\" for tenant-wide rules."
-  type        = string
-  default     = "__global__"
-}
-
-variable "name" {
-  description = "Human-readable rule name."
-  type        = string
-}
-
-variable "stream_selector" {
-  description = "LogQL stream selector matching the logs this rule applies to."
-  type        = string
-}
-
-variable "drop_rate" {
-  description = "Percentage of matching log lines to drop (0-100)."
-  type        = number
+variable "rule" {
+  description = "Drop rule definition."
+  type = object({
+    name              = string
+    stream_selector   = string
+    drop_rate         = number
+    segment_id        = optional(string, "__global__")
+    levels            = optional(list(string))
+    log_line_contains = optional(list(string))
+    disabled          = optional(bool, false)
+    expires_at        = optional(string)
+    rule_version      = optional(number, 1)
+  })
 
   validation {
-    condition     = var.drop_rate >= 0 && var.drop_rate <= 100
+    condition     = startswith(var.rule.stream_selector, "{") && endswith(var.rule.stream_selector, "}")
+    error_message = "stream_selector must be a LogQL stream selector beginning with '{' and ending with '}'."
+  }
+
+  validation {
+    condition     = var.rule.drop_rate >= 0 && var.rule.drop_rate <= 100
     error_message = "drop_rate must be between 0 and 100."
   }
-}
 
-variable "levels" {
-  description = "Optional list of log levels to match (e.g. [\"info\", \"debug\"]). Omit to match all levels."
-  type        = list(string)
-  default     = null
-}
+  validation {
+    condition = var.rule.levels == null || alltrue([
+      for l in coalesce(var.rule.levels, []) :
+      contains(["trace", "debug", "info", "warn", "error", "critical", "fatal", "unknown"], l)
+    ])
+    error_message = "levels must be a subset of [trace, debug, info, warn, error, critical, fatal, unknown]."
+  }
 
-variable "log_line_contains" {
-  description = "Optional list of substrings required in the log line for the rule to match."
-  type        = list(string)
-  default     = null
-}
-
-variable "disabled" {
-  description = "Create the rule in a disabled state."
-  type        = bool
-  default     = false
-}
-
-variable "expires_at" {
-  description = "RFC3339 timestamp at which the rule stops applying. Permanent if null."
-  type        = string
-  default     = null
-}
-
-variable "rule_version" {
-  description = "Optimistic-concurrency version sent to the API as `version`. Bump if the rule was edited out-of-band and the next apply 409s. (Renamed from `version` because that name is reserved by Terraform inside module blocks.)"
-  type        = number
-  default     = 1
+  validation {
+    condition     = var.rule.expires_at == null || can(timeadd(var.rule.expires_at, "0s"))
+    error_message = "expires_at must be an RFC3339 timestamp, e.g. 2026-07-01T00:00:00Z."
+  }
 }

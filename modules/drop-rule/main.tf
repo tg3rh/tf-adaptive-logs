@@ -1,12 +1,21 @@
-terraform {
-  required_version = ">= 1.5"
-
-  required_providers {
-    restapi = {
-      source  = "Mastercard/restapi"
-      version = "~> 2.0"
-    }
+locals {
+  body_attrs = {
+    stream_selector   = var.rule.stream_selector
+    drop_rate         = var.rule.drop_rate
+    levels            = var.rule.levels
+    log_line_contains = var.rule.log_line_contains
   }
+
+  rule_attrs = {
+    segment_id = var.rule.segment_id
+    name       = var.rule.name
+    disabled   = var.rule.disabled
+    version    = var.rule.rule_version
+    expires_at = var.rule.expires_at
+    body       = { for k, v in local.body_attrs : k => v if v != null }
+  }
+
+  payload = jsonencode({ for k, v in local.rule_attrs : k => v if v != null })
 }
 
 resource "restapi_object" "this" {
@@ -19,21 +28,5 @@ resource "restapi_object" "this" {
     "updated_at",
   ]
 
-  data = jsonencode(merge(
-    {
-      segment_id = var.segment_id
-      name       = var.name
-      disabled   = var.disabled
-      version    = var.rule_version
-      body = merge(
-        {
-          stream_selector = var.stream_selector
-          drop_rate       = var.drop_rate
-        },
-        var.levels != null ? { levels = var.levels } : {},
-        var.log_line_contains != null ? { log_line_contains = var.log_line_contains } : {},
-      )
-    },
-    var.expires_at != null ? { expires_at = var.expires_at } : {},
-  ))
+  data = local.payload
 }

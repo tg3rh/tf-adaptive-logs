@@ -1,19 +1,8 @@
-terraform {
-  required_version = ">= 1.5"
-
-  required_providers {
-    restapi = {
-      source  = "Mastercard/restapi"
-      version = "~> 2.0"
-    }
-  }
-}
-
 resource "restapi_object" "this" {
-  path = "/adaptive-logs/exemptions"
+  path         = "/adaptive-logs/exemptions"
   id_attribute = "result/id"
-  data = local.body
-  update_data = local.body
+  data         = local.body
+  update_data  = local.body
 
   lifecycle {
     ignore_changes = all

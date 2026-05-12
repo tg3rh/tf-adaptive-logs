@@ -1,14 +1,3 @@
-terraform {
-  required_version = ">= 1.5"
-
-  required_providers {
-    restapi = {
-      source  = "Mastercard/restapi"
-      version = "~> 2.0"
-    }
-  }
-}
-
 resource "restapi_object" "this" {
   path         = "/adaptive-logs/segment"
   read_path    = "/adaptive-logs/segment?segment={id}"

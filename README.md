@@ -1,18 +1,19 @@
 # tf-adaptive-logs
 
-Terraform modules for managing [Grafana Cloud Adaptive Logs](https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/) resources as code.
+Terraform module for managing [Grafana Cloud Adaptive Logs](https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/) resources as code.
 
 ## What is Adaptive Logs?
 
 Adaptive Logs is a Grafana Cloud feature that reduces log storage cost by identifying log lines that are ingested but rarely (or never) queried, and dropping a configurable share of them at ingest time. It groups log lines into patterns, analyses query usage on a 15-day rolling window, and produces drop recommendations you can review, customise, or override.
 
-This repository exposes the three resource types from the [Adaptive Logs API](https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/manage-as-code/adaptive-logs-api/) as Terraform modules so they can be version-controlled, code-reviewed, and rolled out through normal Terraform pipelines.
+This repository exposes the three resource types from the [Adaptive Logs API](https://grafana.com/docs/grafana-cloud/adaptive-telemetry/adaptive-logs/manage-as-code/adaptive-logs-api/) so they can be version-controlled, code-reviewed, and rolled out through normal Terraform pipelines.
 
-| Resource | Module | Purpose |
+| Entry point | Path | When to use |
 | --- | --- | --- |
-| Segment | [modules/segment](modules/segment/) | Groups log streams by a shared label (team, service, env) so drop rules and recommendations can be scoped per-group. |
-| Drop rule | [modules/drop-rule](modules/drop-rule/) | Drops a configurable percentage of log lines matching a LogQL stream selector, optionally filtered by log level or substring. |
-| Exemption | [modules/exemption](modules/exemption/) | Protects logs matching a LogQL selector from being dropped — for compliance, debugging, or incident investigation. |
+| Wrapper (root) | `.` | Manage segments, drop rules, and exemptions together as maps. Recommended for most users. |
+| Segment sub-module | [`modules/segment`](modules/segment/) | Compose segments individually (e.g. across multiple stacks). |
+| Drop-rule sub-module | [`modules/drop-rule`](modules/drop-rule/) | Compose drop rules individually. |
+| Exemption sub-module | [`modules/exemption`](modules/exemption/) | Compose exemptions individually. |
 
 There is no official Terraform provider for Adaptive Logs, so the modules wrap the REST API through the [Mastercard/restapi](https://registry.terraform.io/providers/Mastercard/restapi/latest/docs) provider.
 
@@ -48,85 +49,237 @@ provider "restapi" {
 
 A working end-to-end example lives in [examples/basic](examples/basic/). Copy `terraform.tfvars.example` to `terraform.tfvars`, fill in your credentials, and run `terraform init && terraform apply`.
 
-## Modules
+## Usage — wrapper (recommended)
+
+The root module takes three maps and fans them out with `for_each`. The map keys are stable, human-readable identifiers you control — use them in plan output, state addressing, and cross-references between drop rules and segments.
+
+```hcl
+module "adaptive_logs" {
+  source = "github.com/grafana/tf-adaptive-logs?ref=v0.1.0"
+
+  segments = {
+    billing = {
+      name     = "Billing API"
+      selector = "{service_name=\"billing-api\"}"
+    }
+  }
+
+  drop_rules = {
+    debug-api-gateway = {
+      name            = "Drop debug logs on api-gateway"
+      stream_selector = "{service_name=\"api-gateway\"}"
+      drop_rate       = 100
+      levels          = ["debug"]
+    }
+
+    debug-billing = {
+      segment         = "billing"      # references segments map key
+      name            = "Drop debug logs on billing-api"
+      stream_selector = "{service_name=\"billing-api\"}"
+      drop_rate       = 100
+      levels          = ["debug"]
+    }
+  }
+
+  exemptions = {
+    api-gateway-prod = {
+      stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
+      reason          = "Investigating latency spike — keep full fidelity"
+    }
+  }
+}
+```
+
+### Inputs
+
+| Variable | Type | Description |
+| --- | --- | --- |
+| `segments` | `map(object)` | Segments keyed by local identifier. Required fields: `name`, `selector`. |
+| `drop_rules` | `map(object)` | Drop rules keyed by local identifier. See [drop rule fields](#drop-rule-fields). |
+| `exemptions` | `map(object)` | Exemptions keyed by local identifier. Required field: `stream_selector`. Optional: `reason`, `expires_at`. |
+
+### Drop rule fields
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `name` | `string` | yes | — | Human-readable rule name. |
+| `stream_selector` | `string` | yes | — | LogQL stream selector matching the logs the rule applies to. |
+| `drop_rate` | `number` | yes | — | Percentage of matching lines to drop, `0`–`100`. |
+| `segment` | `string` | no | `"__global__"` | Segment key from `var.segments`, a literal segment ID, or `__global__` for tenant-wide. |
+| `levels` | `list(string)` | no | `null` | Log levels to match — subset of `trace`, `debug`, `info`, `warn`, `error`, `critical`, `fatal`, `unknown`. Omit to match all. |
+| `log_line_contains` | `list(string)` | no | `null` | Substrings the log line must contain for the rule to match. |
+| `disabled` | `bool` | no | `false` | Create the rule disabled. |
+| `expires_at` | `string` | no | `null` | RFC3339 timestamp after which the rule stops applying. Permanent if null. |
+| `rule_version` | `number` | no | `1` | Optimistic-concurrency token sent as `version`. See [Troubleshooting](#troubleshooting) if an apply 409s. |
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `segment_ids` | Map from segment key to server-generated segment ID. |
+| `drop_rule_ids` | Map from drop-rule key to server-generated rule ID. |
+| `exemption_ids` | Map from exemption key to server-generated exemption ID. |
+
+## Usage — sub-modules
+
+Each resource type is also available as a stand-alone sub-module under [`modules/`](modules/). Use them when the wrapper's map-based shape doesn't fit — for example, when assembling resources across multiple stacks or composing with other Terraform configurations.
 
 ### `modules/segment`
 
-Creates an Adaptive Logs segment — a named group of log streams identified by a LogQL selector. Segments let you scope drop rules and recommendations to a team or service. The reserved id `__global__` represents the tenant-wide default segment and does not need to be created.
+Creates one Adaptive Logs segment.
 
 | Variable | Type | Required | Description |
 | --- | --- | --- | --- |
 | `name` | `string` | yes | Human-readable segment name. |
 | `selector` | `string` | yes | LogQL selector. Only equality matchers or multi-literal regex matchers are accepted by the API. |
 
-Outputs: `id` (server-generated, pass to drop-rule `segment_id`), `name`.
+Outputs: `id` (server-generated, pass to drop-rule `rule.segment_id`), `name`.
 
 ### `modules/drop-rule`
 
-Creates a user-defined drop rule that removes a percentage of matching log lines at ingest. Rules can be scoped to a segment or applied tenant-wide via `__global__`.
+Creates one user-defined drop rule. Takes a single `rule` object — see the [drop rule fields table](#drop-rule-fields) above for the schema. The sub-module's object uses `segment_id` (literal ID or `__global__`) rather than the wrapper's `segment` key, since there is no segments map to reference.
 
-| Variable | Type | Required | Default | Description |
-| --- | --- | --- | --- | --- |
-| `name` | `string` | yes | — | Human-readable rule name. |
-| `stream_selector` | `string` | yes | — | LogQL stream selector matching the logs the rule applies to. |
-| `drop_rate` | `number` | yes | — | Percentage of matching lines to drop, `0`–`100`. |
-| `segment_id` | `string` | no | `"__global__"` | Target segment. Use the `id` output of a `segment` module, or leave default for tenant-wide. |
-| `levels` | `list(string)` | no | `null` | Log levels to match, e.g. `["debug", "info"]`. Omit to match all levels. |
-| `log_line_contains` | `list(string)` | no | `null` | Substrings the log line must contain for the rule to match. |
-| `disabled` | `bool` | no | `false` | Create the rule disabled. |
-| `expires_at` | `string` | no | `null` | RFC3339 timestamp after which the rule stops applying. Permanent if null. |
-| `rule_version` | `number` | no | `1` | Optimistic-concurrency token sent as `version`. Bump if the rule was edited out-of-band and the next apply 409s. |
+```hcl
+module "drop_debug_billing" {
+  source = "./modules/drop-rule"
+
+  rule = {
+    segment_id      = module.billing_segment.id
+    name            = "Drop debug logs on billing-api"
+    stream_selector = "{service_name=\"billing-api\"}"
+    drop_rate       = 100
+    levels          = ["debug"]
+  }
+}
+```
 
 Outputs: `id`.
 
 ### `modules/exemption`
 
-Creates an exemption that protects logs matching a selector from being dropped, regardless of segment-level or global drop rules.
+Creates one exemption that protects logs matching a selector from being dropped.
 
 | Variable | Type | Required | Description |
 | --- | --- | --- | --- |
 | `stream_selector` | `string` | yes | LogQL stream selector identifying logs that must not be dropped. |
 | `reason` | `string` | no | Business justification recorded with the exemption. |
+| `expires_at` | `string` | no | RFC3339 timestamp after which the exemption stops applying. Permanent if null. |
 
 Outputs: `id`.
 
-> **Note:** the exemption module is pinned with `lifecycle { ignore_changes = all }`. The provider issues a PUT whenever any tracked attribute changes, and the API rejects the response-shaped body that ends up in state after the first read (HTTP 500). To change an exemption, recreate it:
->
-> ```bash
-> terraform apply -replace='module.<name>.restapi_object.this'
-> ```
+> **Note:** the exemption sub-module is pinned with `lifecycle { ignore_changes = all }`. To change an exemption, recreate it — see [Troubleshooting](#troubleshooting).
 
-## Example
+## Importing existing resources
+
+Adaptive Logs is typically configured in the Grafana UI before being moved to code. To bring an existing segment, drop rule, or exemption under Terraform management without recreating it, import its state.
+
+First, fetch the resource ID from the API:
+
+```bash
+# Segments
+curl -s -u "${LOKI_TENANT}:${LOKI_TOKEN}" "${LOKI_URL}/adaptive-logs/segment" | jq
+
+# Drop rules
+curl -s -u "${LOKI_TENANT}:${LOKI_TOKEN}" "${LOKI_URL}/adaptive-logs/drop-rules" | jq
+
+# Exemptions
+curl -s -u "${LOKI_TENANT}:${LOKI_TOKEN}" "${LOKI_URL}/adaptive-logs/exemptions" | jq
+```
+
+Then declare the resource in your Terraform code and import it. The form of the import ID is `<path>/<resource-id>`.
+
+### Wrapper module
+
+Use the map key in the Terraform address:
+
+```bash
+terraform import \
+  'module.adaptive_logs.module.drop_rules["debug-billing"].restapi_object.this' \
+  "/adaptive-logs/drop-rules/${RULE_ID}"
+
+terraform import \
+  'module.adaptive_logs.module.segments["billing"].restapi_object.this' \
+  "/adaptive-logs/segment/${SEGMENT_ID}"
+
+terraform import \
+  'module.adaptive_logs.module.exemptions["api-gateway-prod"].restapi_object.this' \
+  "/adaptive-logs/exemptions/${EXEMPTION_ID}"
+```
+
+### Terraform 1.5+ `import` blocks
+
+For declarative, reviewable imports, write `import` blocks alongside your resource declarations and let `terraform plan` show the import in the plan output:
 
 ```hcl
-module "billing_segment" {
-  source = "./modules/segment"
-
-  name     = "Billing API"
-  selector = "{service_name=\"billing-api\"}"
+import {
+  to = module.adaptive_logs.module.drop_rules["debug-billing"].restapi_object.this
+  id = "/adaptive-logs/drop-rules/abc123"
 }
+```
 
-module "drop_debug_billing" {
-  source = "./modules/drop-rule"
+After the first successful apply, remove the `import` block.
 
-  segment_id      = module.billing_segment.id
-  name            = "Drop debug logs on billing-api"
-  stream_selector = "{service_name=\"billing-api\"}"
-  drop_rate       = 100
-  levels          = ["debug"]
+### Sub-module direct usage
+
+```bash
+terraform import \
+  'module.billing_segment.restapi_object.this' \
+  "/adaptive-logs/segment/${SEGMENT_ID}"
+```
+
+After import, run `terraform plan` to verify there is no drift. If the plan wants to update the resource, reconcile the code with what the server holds before applying.
+
+## Troubleshooting
+
+### Drop rule apply returns HTTP 409
+
+The API uses `version` as an optimistic-concurrency token: every successful update increments it server-side. If a rule was edited out-of-band (Grafana UI, another Terraform workspace, a direct API call), the version Terraform sends will be stale and the next apply will 409.
+
+The fix is to resync local state with the server, then re-apply. Two options:
+
+**1. Re-import the resource (preferred).** This refreshes the local state from the server, including the current `version`:
+
+```bash
+RULE_ID=$(terraform output -json drop_rule_ids | jq -r '.["debug-billing"]')
+
+terraform state rm 'module.adaptive_logs.module.drop_rules["debug-billing"].restapi_object.this'
+terraform import \
+  'module.adaptive_logs.module.drop_rules["debug-billing"].restapi_object.this' \
+  "/adaptive-logs/drop-rules/${RULE_ID}"
+terraform apply
+```
+
+**2. Bump `rule_version` manually.** Query the current version from the API and set the field to match:
+
+```bash
+curl -s -u "${LOKI_TENANT}:${LOKI_TOKEN}" \
+  "${LOKI_URL}/adaptive-logs/drop-rules/${RULE_ID}" \
+  | jq '.version'
+```
+
+Then update the rule in your map:
+
+```hcl
+drop_rules = {
+  debug-billing = {
+    # ...
+    rule_version = 4   # whatever the server reports + the apply you are about to make
+  }
 }
+```
 
-module "exempt_billing_prod" {
-  source = "./modules/exemption"
+### Editing an exemption returns HTTP 500
 
-  stream_selector = "{service_name=\"billing-api\", env=\"prod\"}"
-  reason          = "Keep full fidelity while investigating latency regression"
-}
+The `Mastercard/restapi` provider issues a PUT containing the body it received on the previous read, but the Adaptive Logs API rejects that response-shaped body. The exemption sub-module works around this by pinning `lifecycle { ignore_changes = all }`, which means in-place edits are not possible. To change an exemption, recreate it:
+
+```bash
+terraform apply -replace='module.adaptive_logs.module.exemptions["api-gateway-prod"].restapi_object.this'
 ```
 
 ## Repository layout
 
 ```
+main.tf, variables.tf, outputs.tf, versions.tf   # Root wrapper module
 modules/
   segment/      # Adaptive Logs segments
   drop-rule/    # User-defined drop rules
@@ -134,3 +287,7 @@ modules/
 examples/
   basic/        # End-to-end example, runnable against a real stack
 ```
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE).

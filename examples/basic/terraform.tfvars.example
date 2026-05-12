@@ -1,0 +1,14 @@
+# Copy this file to terraform.tfvars and fill in the values for your stack.
+# terraform.tfvars is gitignored; terraform.tfvars.example is tracked.
+
+# Loki base URL for your Grafana Cloud stack.
+# Found under Connections -> Loki -> Details in Grafana Cloud.
+# Example: "https://logs-prod-012.grafana.net"
+loki_url = "https://logs-prod-<region>.grafana.net"
+
+# Numeric instance ID shown on the same Loki details page.
+loki_tenant = "000000"
+
+# Grafana Cloud Access Policy token scoped to adaptive-logs:admin.
+# Create one under Administration -> Access Policies.
+loki_token = "glc_REPLACE_ME"
