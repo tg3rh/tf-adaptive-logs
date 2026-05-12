@@ -9,14 +9,9 @@ terraform {
   }
 }
 
-# The API enforces optimistic concurrency via the `version` field: a PUT with a
-# stale version returns 409. If a rule is edited out-of-band (e.g. in the UI),
-# bump var.rule_version on the caller side to reconcile.
 resource "restapi_object" "this" {
   path = "/adaptive-logs/drop-rules"
 
-  # Server enriches the response with these fields; ignore them to avoid a
-  # cosmetic perma-diff on every plan.
   ignore_changes_to = [
     "id",
     "tenant_id",

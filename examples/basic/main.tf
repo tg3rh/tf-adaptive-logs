@@ -36,8 +36,6 @@ module "drop_debug_api_gateway" {
   levels          = ["debug"]
 }
 
-# Disabled until we know the POST response shape so restapi can extract the ID.
-# Re-enable after setting id_attribute correctly on modules/exemption/main.tf.
 module "exempt_api_gateway_prod" {
   source = "../../modules/exemption"
 
