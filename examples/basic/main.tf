@@ -25,31 +25,31 @@ module "adaptive_logs" {
 
   segments = {
     billing = {
-      name     = "Billing API"
-      selector = "{service_name=\"billing-api\"}"
+      name     = "Frontend-Service"
+      selector = "{service_name=\"frontend-service\"}"
     }
   }
 
   drop_rules = {
     debug-api-gateway = {
-      name            = "Drop debug logs on api-gateway"
-      stream_selector = "{service_name=\"api-gateway\"}"
+      name            = "Drop debug logs on orders"
+      stream_selector = "{service_name=\"orders\"}"
       drop_rate       = 100
       levels          = ["debug"]
     }
 
     debug-billing = {
       segment         = "billing"
-      name            = "Drop debug logs on billing-api"
-      stream_selector = "{service_name=\"billing-api\"}"
+      name            = "Drop debug logs on customers"
+      stream_selector = "{service_name=\"customers\"}"
       drop_rate       = 100
       levels          = ["debug"]
     }
   }
 
   exemptions = {
-    api-gateway-prod = {
-      stream_selector = "{service_name=\"api-gateway\", env=\"prod\"}"
+    frontend-service-prod = {
+      stream_selector = "{service_name=\"frontend-service\", env=\"prod\"}"
       reason          = "Investigating latency spike - keep full fidelity"
     }
   }

@@ -4,13 +4,7 @@ resource "restapi_object" "this" {
   update_path  = "/adaptive-logs/segment?segment={id}"
   destroy_path = "/adaptive-logs/segment?segment={id}"
 
-  ignore_changes_to = [
-    "id",
-    "created_at",
-    "updated_at",
-    "is_early",
-    "fallback_to_default",
-  ]
+  ignore_all_server_changes = true
 
   data = jsonencode({
     name     = var.name

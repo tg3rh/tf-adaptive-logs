@@ -21,12 +21,7 @@ locals {
 resource "restapi_object" "this" {
   path = "/adaptive-logs/drop-rules"
 
-  ignore_changes_to = [
-    "id",
-    "tenant_id",
-    "created_at",
-    "updated_at",
-  ]
+  ignore_all_server_changes = true
 
   data = local.payload
 }
