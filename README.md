@@ -286,6 +286,31 @@ modules/
   exemption/    # Drop-rule exemptions
 examples/
   basic/        # End-to-end example, runnable against a real stack
+tests/          # terraform test suite (see Testing section)
+```
+
+## Testing
+
+The `tests/` directory holds a `terraform test` suite that covers payload encoding, variable validation, and root-module fan-out for every sub-module. Tests use `mock_provider "restapi" {}` and run `command = plan`, so they need no Grafana credentials and no network access.
+
+Requirements:
+
+| Tool | Minimum version | Why |
+| --- | --- | --- |
+| Terraform | `>= 1.7` | `mock_provider` blocks were added in 1.7. The module itself still works on `>= 1.5`; only the test runner needs 1.7+. |
+
+Run the full suite from the repo root:
+
+```bash
+terraform init
+terraform test
+```
+
+To run a single file or single `run` block:
+
+```bash
+terraform test -filter=tests/drop_rule.tftest.hcl
+terraform test -verbose
 ```
 
 ## License
